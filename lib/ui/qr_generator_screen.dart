@@ -3,6 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:pretty_qr_code/pretty_qr_code.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:share_plus/share_plus.dart';
+// Import untuk PDF dan Printing
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 const Color primaryColor = Color(0xFF3A2EC3);
 
@@ -28,6 +32,79 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
 
   String? _qrData;
   Color _qrColor = Colors.white;
+
+  // Fungsi untuk Generate dan Print PDF (Tugas 2)
+  Future<void> _generateAndPrintPdf() async {
+    // Tampilkan loading sederhana
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    final imageBytes = await _screenshotController.capture(pixelRatio: 3.0);
+    
+    // Tutup loading
+    if (!mounted) return;
+    Navigator.pop(context);
+
+    if (imageBytes == null) return;
+
+    final pdf = pw.Document();
+    final qrImage = pw.MemoryImage(imageBytes);
+
+    pdf.addPage(
+      pw.Page(
+        build: (pw.Context context) {
+          return pw.Center(
+            child: pw.Column(
+              mainAxisAlignment: pw.MainAxisAlignment.center,
+              children: [
+                pw.Text('QR Code Generated',
+                    style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
+                pw.SizedBox(height: 20),
+                pw.Image(qrImage, width: 200, height: 200),
+                pw.SizedBox(height: 20),
+                pw.Text('Link/Teks: ${_qrData ?? "-"}',
+                    style: const pw.TextStyle(fontSize: 14)),
+                pw.SizedBox(height: 10),
+                pw.Text('Dibuat oleh: M Galih Rafiqul Islam - QR S&G App',
+                    style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey)),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+
+    await Printing.layoutPdf(
+      onLayout: (format) async => pdf.save(),
+      name: 'QR_Code_${DateTime.now().millisecondsSinceEpoch}.pdf',
+    );
+  }
+
+  // Fungsi untuk Send/Share dengan attachment (Tugas 1)
+  Future<void> _sendQr() async {
+    if (_qrData == null || _qrData!.isEmpty) return;
+
+    final Uint8List? imageBytes = await _screenshotController.capture(
+      pixelRatio: MediaQuery.of(context).devicePixelRatio,
+    );
+
+    if (imageBytes != null) {
+      await Share.shareXFiles(
+        [
+          XFile.fromData(
+            imageBytes,
+            name: 'qr_code.png',
+            mimeType: 'image/png',
+          ),
+        ],
+        subject: 'QR Code dari QR S&G App',
+        text: 'Ini QR Code untuk: ${_qrData ?? 'tidak ada'}\nDibuat menggunakan QR S&G oleh M Galih Rafiqul Islam',
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -69,7 +146,6 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
                     ),
                     child: Column(
                       children: [
-                        // QR Display + Input + Controls (ditambahkan di step berikutnya)
                         Screenshot(
                           controller: _screenshotController,
                           child: Container(
@@ -81,13 +157,6 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
                                 color: Colors.black12,
                                 width: 2,
                               ),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Colors.black12,
-                                  blurRadius: 12,
-                                  offset: Offset(0, 4),
-                                ),
-                              ],
                             ),
                             child: _qrData == null || _qrData!.isEmpty
                                 ? const Padding(
@@ -153,12 +222,6 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
                                         : Colors.transparent,
                                     width: 3,
                                   ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black12,
-                                      blurRadius: 6,
-                                    ),
-                                  ],
                                 ),
                               ),
                             );
@@ -167,55 +230,51 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
                         const SizedBox(height: 32),
                         const Divider(height: 1),
                         const SizedBox(height: 16),
-                        Row(
+                        
+                        // Row Tombol Action
+                        Column(
                           children: [
-                            Expanded(
-                              child: OutlinedButton(
-                                onPressed: () {
-                                  setState(() {
-                                    _qrData = null;
-                                    _qrColor = Colors.white;
-                                  });
-                                },
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.red,
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () {
+                                      setState(() {
+                                        _qrData = null;
+                                        _qrColor = Colors.white;
+                                      });
+                                    },
+                                    icon: const Icon(Icons.refresh),
+                                    label: const Text('Reset'),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.red,
+                                    ),
+                                  ),
                                 ),
-                                child: const Text('Reset'),
-                              ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: _sendQr,
+                                    icon: const Icon(Icons.send),
+                                    label: const Text('Send'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: primaryColor,
+                                      foregroundColor: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 16),
-                            Expanded(
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
                               child: ElevatedButton.icon(
-                                onPressed: () async {
-                                  if (_qrData == null || _qrData!.isEmpty)
-                                    return;
-
-                                  // Delay kecil untuk render selesai
-                                  await Future.delayed(
-                                    const Duration(milliseconds: 100),
-                                  );
-
-                                  final Uint8List? imageBytes =
-                                      await _screenshotController.capture(
-                                        pixelRatio: MediaQuery.of(
-                                          context,
-                                        ).devicePixelRatio,
-                                      );
-
-                                  if (imageBytes != null) {
-                                    await Share.shareXFiles([
-                                      XFile.fromData(
-                                        imageBytes,
-                                        name: 'qrcode_dateTime.png',
-                                        mimeType: 'image/png',
-                                      ),
-                                    ]);
-                                  }
-                                },
-                                icon: const Icon(Icons.share),
-                                label: const Text('Share QR'),
+                                onPressed: _generateAndPrintPdf,
+                                icon: const Icon(Icons.print),
+                                label: const Text('Print to PDF'),
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color.fromARGB(255, 253, 253, 253),
+                                  backgroundColor: Colors.grey.shade800,
+                                  foregroundColor: Colors.white,
                                 ),
                               ),
                             ),

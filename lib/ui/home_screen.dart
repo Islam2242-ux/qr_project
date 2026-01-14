@@ -1,196 +1,197 @@
-// Di dalam file lib/ui/home_screen.dart
 import 'package:flutter/material.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
+import 'qr_scanner_screen.dart'; // Tetap import untuk ScannerOverlayPainter
+import 'qr_generator_screen.dart';
 
-const double kDefaultPadding = 20.0;
-const double kGridSpacing = 16.0;
-
-class User {
-  final String name;
-  final String role;
-  final String profileImagePath;
-
-  const User({
-    required this.name,
-    required this.role,
-    required this.profileImagePath,
-  });
-}
-
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
-  static const _currentUser = User(
-    name: 'Ade Setiawan',
-    role: 'Fullstack Developer',
-    profileImagePath: 'assets/images/profile.jpg',
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final MobileScannerController _controller = MobileScannerController(
+    detectionSpeed: DetectionSpeed.noDuplicates,
+    formats: [BarcodeFormat.qrCode],
   );
+
+  int _selectedIndex = 0;
+
+  // Fungsi untuk menampilkan konten berdasarkan index
+  Widget _buildBody() {
+    switch (_selectedIndex) {
+      case 0:
+        return QrScannerScreen(); // Pindahkan UI Scanner ke sini
+      case 1:
+        return const QrGeneratorScreen(); // File yang ingin kamu hubungkan
+      case 2:
+        return const Center(child: Text("History Screen", style: TextStyle(color: Colors.white)));
+      default:
+        return QrScannerScreen();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('QR S&G'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            onPressed: () {}, // TODO: Settings screen
+      // Menggunakan extendBody agar kamera masuk ke area bawah navbar
+      extendBody: true,
+      // Menggunakan extendBodyBehindAppBar agar kamera masuk ke area status bar
+      extendBodyBehindAppBar: true,
+      body: Stack(
+        children: [
+          _buildBody(),
+          
+          // 1. SCANNER SEBAGAI BACKGROUND FULL (Paling Belakang)
+          Positioned.fill(
+            child: MobileScanner(
+              controller: _controller,
+              onDetect: (capture) {
+                // Logika handle barcode
+              },
+            ),
           ),
-        ],
-      ),
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: kDefaultPadding),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            UserProfileHeader(user: _currentUser),
-            const SizedBox(height: 24),
-            const Text(
-              'Welcome to',
-              style: TextStyle(fontSize: 20, color: Colors.grey),
-            ),
-            const Text(
-              'QR S&G',
-              style: TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.2,
+
+          // 2. OVERLAY GELAP DENGAN LUBANG SCANNER
+          // ColorFiltered membuat efek lubang transparan di tengah background hitam transparan
+          Positioned.fill(
+            child: ColorFiltered(
+              colorFilter: ColorFilter.mode(
+                Colors.black.withOpacity(0.5),
+                BlendMode.srcOut,
               ),
-            ),
-            const SizedBox(height: 32),
-            Expanded(
-              child: GridView.count(
-                crossAxisCount: 2,
-                mainAxisSpacing: kGridSpacing,
-                crossAxisSpacing: kGridSpacing,
-                childAspectRatio: 1.0,
-                children: const [
-                  _MenuButton(
-                    icon: Icons.qr_code_2,
-                    label: 'Create',
-                    color: Colors.blueAccent,
-                    route: '/create',
+              child: Stack(
+                children: [
+                  Container(
+                    decoration: const BoxDecoration(
+                      color: Colors.black,
+                      backgroundBlendMode: BlendMode.dstOut,
+                    ),
                   ),
-                  _MenuButton(
-                    icon: Icons.qr_code_scanner,
-                    label: 'Scan',
-                    color: Colors.redAccent,
-                    route: '/scan',
-                  ),
-                  _MenuButton(
-                    icon: Icons.send,
-                    label: 'Share',
-                    color: Colors.greenAccent,
-                    route: '', // TODO
-                  ),
-                  _MenuButton(
-                    icon: Icons.print,
-                    label: 'Print',
-                    color: Colors.purpleAccent,
-                    route: '', // TODO
+                  Center(
+                    child: Container(
+                      width: 260,
+                      height: 260,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(40),
+                      ),
+                    ),
                   ),
                 ],
               ),
             ),
-          ],
-        ),
+          ),
+
+          // 3. BORDER SCANNER (Putih di pojok-pojok)
+          Center(
+            child: CustomPaint(
+              size: const Size(260, 260),
+              painter: ScannerOverlayPainter(), 
+            ),
+          ),
+
+          // 4. UI LAYER ATAS (Profil, Nama, Flash)
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              child: Row(
+                children: [
+                  const CircleAvatar(
+                    radius: 24,
+                    backgroundImage: AssetImage('assets/images/profile.jpg'),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Hello,',
+                          style: TextStyle(color: Colors.white70, fontSize: 14),
+                        ),
+                        Text(
+                          'Ade Setiawan',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.flash_on, color: Colors.white),
+                      onPressed: () => _controller.toggleTorch(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // 5. NAVBAR MELAYANG DI BAWAH
+          Positioned(
+            left: 24,
+            right: 24,
+            bottom: 40,
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF2F2F2).withOpacity(0.95), // Warna abu-abu navbar
+                borderRadius: BorderRadius.circular(40),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.3),
+                    blurRadius: 20,
+                    offset: const Offset(0, 10),
+                  )
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildNavItem(Icons.qr_code_scanner, "Scan", 0),
+                  _buildNavItem(Icons.add_box_rounded, "Create", 1),
+                  _buildNavItem(Icons.history, "History", 2),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
-}
 
-class UserProfileHeader extends StatelessWidget {
-  const UserProfileHeader({super.key, required this.user});
-
-  final User user;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        CircleAvatar(
-          radius: 36,
-          backgroundImage: AssetImage(user.profileImagePath),
-        ),
-        const SizedBox(width: 16),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Hello, Ade Setiawan',
-              style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            Text(
-              user.role,
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey[700],
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _MenuButton extends StatelessWidget {
-  const _MenuButton({
-    required this.icon,
-    required this.label,
-    required this.color,
-    required this.route,
-  });
-
-  final IconData icon;
-  final String label;
-  final Color color;
-  final String route;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildNavItem(IconData icon, String label, int index) {
+    bool isSelected = _selectedIndex == index;
     return GestureDetector(
-      onTap: route.isNotEmpty
-          ? () => Navigator.pushNamed(context, route)
-          : null,
+      onTap: () => setState(() => _selectedIndex = index),
       child: Container(
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.15),
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 15,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: color,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                icon,
-                color: Colors.white,
-                size: 48,
-              ),
+            Icon(
+              icon,
+              color: isSelected ? Colors.blueAccent : Colors.grey[600],
+              size: 28,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 4),
             Text(
               label,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
+              style: TextStyle(
+                color: isSelected ? Colors.blueAccent : Colors.grey[600],
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
               ),
             ),
           ],
