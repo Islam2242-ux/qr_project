@@ -14,6 +14,8 @@ void main() {
       devices: [
         Devices.ios.iPhone11ProMax,
         Devices.ios.iPadPro11Inches,
+        Devices.android.googlePixel9,
+        Devices.android.googlePixel9ProXL,
       ],
       builder: (context) => const MainApp(),
     ),

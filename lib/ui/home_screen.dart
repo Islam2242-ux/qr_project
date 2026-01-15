@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'qr_scanner_screen.dart'; // Tetap import untuk ScannerOverlayPainter
+import 'qr_scanner_screen.dart';
 import 'qr_generator_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -9,7 +9,6 @@ class HomeScreen extends StatefulWidget {
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
-
 
 class _HomeScreenState extends State<HomeScreen> {
   final MobileScannerController _controller = MobileScannerController(
@@ -25,48 +24,77 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  // 1. PINDAHKAN LOGIKA BODY KE SINI
+  // 1. FUNGSI UNTUK MENAMPILKAN KONTEN (Penting: Scanner dipisah ke fungsi sendiri)
   Widget _buildBody() {
     switch (_selectedIndex) {
       case 0:
-        return _buildScannerView();
+        return _buildScannerView(); // Memanggil tampilan kamera
       case 1:
-        return const QrGeneratorScreen();
+        return const QrGeneratorScreen(); // Memanggil tampilan generator
       case 2:
-        return const Center(child: Text("History Screen", style: TextStyle(color: Colors.white)));
+        return const Center(
+          child: Text("History Screen", style: TextStyle(color: Colors.white)),
+        );
       default:
         return _buildScannerView();
     }
   }
 
-
-
-  // 3. DEFINISIKAN FUNGSI NAVBAR (Ini yang tadi error karena belum ada)
-  Widget _buildFloatingNavbar() {
-    return Positioned(
-      left: 24, right: 24, bottom: 40,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF2F2F2).withOpacity(0.95),
-          borderRadius: BorderRadius.circular(40),
-          boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 10))
-          ],
+  // 2. FUNGSI KHUSUS UNTUK UI SCANNER
+  Widget _buildScannerView() {
+    return Stack(
+      children: [
+        // SCANNER SEBAGAI BACKGROUND
+        Positioned.fill(
+          child: MobileScanner(
+            controller: _controller,
+            onDetect: (capture) {
+              // Logika handle barcode
+            },
+          ),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _buildNavItem(Icons.qr_code_scanner, "Scan", 0),
-            _buildNavItem(Icons.add_box_rounded, "Create", 1),
-            _buildNavItem(Icons.history, "History", 2),
-          ],
+
+        // OVERLAY GELAP DENGAN LUBANG
+        Positioned.fill(
+          child: ColorFiltered(
+            colorFilter: ColorFilter.mode(
+              Colors.black.withOpacity(0.5),
+              BlendMode.srcOut,
+            ),
+            child: Stack(
+              children: [
+                Container(
+                  decoration: const BoxDecoration(
+                    color: Colors.black,
+                    backgroundBlendMode: BlendMode.dstOut,
+                  ),
+                ),
+                Center(
+                  child: Container(
+                    width: 260,
+                    height: 260,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(40),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
-      ),
+
+        // BORDER PUTIH DI POJOK
+        Center(
+          child: CustomPaint(
+            size: const Size(260, 260),
+            painter: ScannerOverlayPainter(),
+          ),
+        ),
+      ],
     );
   }
 
-  // 4. BAGIAN BUILD UTAMA JADI LEBIH BERSIH
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -74,16 +102,17 @@ class _HomeScreenState extends State<HomeScreen> {
       extendBodyBehindAppBar: true,
       body: Stack(
         children: [
-          _buildBody(), 
-          _selectedIndex == 0 
-              ? _buildScannerView() 
-              : const QrGeneratorScreen(),// Menampilkan halaman yang dipilih
+          // TAMPILKAN BODY (Hanya satu yang aktif: Scanner ATAU Generator)
+          _buildBody(),
 
-          // UI Layer Atas (Hanya muncul saat Scan)
+          // UI LAYER ATAS (Hanya muncul jika sedang di mode Scan)
           if (_selectedIndex == 0)
             SafeArea(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 10,
+                ),
                 child: Row(
                   children: [
                     const CircleAvatar(
@@ -96,13 +125,29 @@ class _HomeScreenState extends State<HomeScreen> {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Hello,', style: TextStyle(color: Colors.white70, fontSize: 14)),
-                          Text('Kamu 🗿', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                          Text(
+                            'Hello,',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 14,
+                            ),
+                          ),
+                          Text(
+                            'Kamu',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ],
                       ),
                     ),
                     Container(
-                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        shape: BoxShape.circle,
+                      ),
                       child: IconButton(
                         icon: const Icon(Icons.flash_on, color: Colors.white),
                         onPressed: () => _controller.toggleTorch(),
@@ -113,61 +158,45 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
 
-          _buildFloatingNavbar(), // Memanggil navbar yang sudah didefinisikan di atas
+          // NAVBAR MELAYANG (Muncul di semua halaman)
+          Positioned(
+            left: 24,
+            right: 24,
+            bottom: 40,
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF2F2F2).withOpacity(0.95),
+                borderRadius: BorderRadius.circular(40),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.3),
+                    blurRadius: 20,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildNavItem(Icons.qr_code_scanner, "Scan", 0),
+                  _buildNavItem(Icons.add_box_rounded, "Create", 1),
+                  _buildNavItem(Icons.history, "History", 2),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  // 2. PINDAHKAN LOGIKA SCANNER KE SINI (Agar tidak tumpang tindih)
-  Widget _buildScannerView() {
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: MobileScanner(
-            controller: _controller,
-            onDetect: (capture) {
-              // Logika scan kamu
-            },
-          ),
-        ),
-        // Overlay Gelap & Lubang Scanner (Kode yang kamu buat tadi)
-        Positioned.fill(
-          child: ColorFiltered(
-            colorFilter: ColorFilter.mode(
-              Colors.black.withOpacity(0.5),
-              BlendMode.srcOut,
-            ),
-            child: Stack(
-              children: [
-                Container(decoration: const BoxDecoration(color: Colors.black, backgroundBlendMode: BlendMode.dstOut)),
-                Center(
-                  child: Container(
-                    width: 260, height: 260,
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(40)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        Center(
-          child: CustomPaint(
-            size: const Size(260, 260),
-            painter: ScannerOverlayPainter(),
-          ),
-        ),
-      ],
-    );
-  }
-  
-  // Fungsi nav item tetap sama
   Widget _buildNavItem(IconData icon, String label, int index) {
     bool isSelected = _selectedIndex == index;
     return GestureDetector(
       onTap: () {
         setState(() => _selectedIndex = index);
-        // Penting: Matikan kamera jika bukan di tab Scan
+        // Mengatur kamera agar berhenti saat tidak digunakan
         if (index != 0) {
           _controller.stop();
         } else {
@@ -179,9 +208,19 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: isSelected ? Colors.blueAccent : Colors.grey[600], size: 28),
+            Icon(
+              icon,
+              color: isSelected ? Colors.blueAccent : Colors.grey[600],
+              size: 28,
+            ),
             const SizedBox(height: 4),
-            Text(label, style: TextStyle(color: isSelected ? Colors.blueAccent : Colors.grey[600], fontSize: 12)),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? Colors.blueAccent : Colors.grey[600],
+                fontSize: 12,
+              ),
+            ),
           ],
         ),
       ),
