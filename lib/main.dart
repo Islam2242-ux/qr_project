@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:device_preview/device_preview.dart';
 import 'package:flutter/foundation.dart'; // untuk kReleaseMode
-import 'package:flutter/material.dart';
-
 import 'ui/splash_screen.dart';
 import 'ui/home_screen.dart';
 
