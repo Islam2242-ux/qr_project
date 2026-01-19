@@ -1,5 +1,8 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart'; // Wajib untuk kIsWeb
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'qr_generator_screen.dart';
 import 'dart:typed_data';
 import 'package:flutter/services.dart';
@@ -11,22 +14,71 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+  // CONFIG: autoStart false agar kita pegang kendali penuh
   final MobileScannerController _controller = MobileScannerController(
     detectionSpeed: DetectionSpeed.noDuplicates,
     formats: [BarcodeFormat.qrCode],
+    autoStart: false, 
   );
 
   String? _barcodeValue;
   int _selectedIndex = 0;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Jalankan kamera diam-diam
+    _startCameraSilent();
+  }
+
+  Future<void> _startCameraSilent() async {
+    // Delay kecil untuk safety rendering UI
+    await Future.delayed(const Duration(milliseconds: 100));
+
+    // Cek izin di HP (tanpa popup snackbar error)
+    if (!kIsWeb) {
+      final status = await Permission.camera.status;
+      if (!status.isGranted) {
+        await Permission.camera.request();
+      }
+    }
+
+    // Coba start kamera. Jika gagal, biarkan saja (catch block kosong).
+    try {
+      await _controller.start();
+    } catch (e) {
+      // Silent catch: Tidak melakukan apa-apa jika error.
+      // Layar akan tetap hitam (dari placeholder).
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (kIsWeb) return; 
+    if (!_controller.value.isInitialized) return;
+
+    switch (state) {
+      case AppLifecycleState.resumed:
+        if (_selectedIndex == 0) _controller.start();
+        break;
+      case AppLifecycleState.inactive:
+        _controller.stop();
+        break;
+      default:
+        break;
+    }
+    super.didChangeAppLifecycleState(state);
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller.dispose();
     super.dispose();
   }
 
-  // 1. FUNGSI UNTUK MENAMPILKAN KONTEN
   Widget _buildBody() {
     switch (_selectedIndex) {
       case 0:
@@ -35,60 +87,82 @@ class _HomeScreenState extends State<HomeScreen> {
         return const QrGeneratorScreen();
       case 2:
         return const Center(
-          child: Text("History Screen", style: TextStyle(color: Colors.white)),
+          child: Text("History Screen", style: TextStyle(color: Colors.black)),
         );
       default:
         return _buildScannerView();
     }
   }
 
-  // 2. FUNGSI KHUSUS UNTUK UI SCANNER
   Widget _buildScannerView() {
+    // Ukuran area scan
+    const double scanAreaSize = 260.0;
+
     return Stack(
       children: [
-        // SCANNER SEBAGAI BACKGROUND
+        // 1. KAMERA (Paling Bawah)
         Positioned.fill(
           child: MobileScanner(
             controller: _controller,
-            onDetect: _handleBarcode, // Memanggil fungsi di bawah
+            onDetect: _handleBarcode,
+            // HAPUS SEMUA TAMPILAN ERROR
+            // Jika error, return widget kosong (Hitam)
+            errorBuilder: (context, error,) {
+              return const ColoredBox(color: Colors.black);
+            },
+            // Saat loading juga Hitam
+            placeholderBuilder: (context,) {
+              return const ColoredBox(color: Colors.black);
+            },
           ),
         ),
 
-        // OVERLAY GELAP DENGAN LUBANG
-        Positioned.fill(
-          child: ColorFiltered(
-            colorFilter: ColorFilter.mode(
-              Colors.black.withOpacity(0.5),
-              BlendMode.srcOut,
-            ),
-            child: Stack(
+        // 2. OVERLAY MANUAL (4 Kotak Hitam - Aman untuk Web)
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final double width = constraints.maxWidth;
+            final double height = constraints.maxHeight;
+            final double verticalGap = (height - scanAreaSize) / 2;
+            final double horizontalGap = (width - scanAreaSize) / 2;
+
+            return Stack(
               children: [
-                Container(
-                  decoration: const BoxDecoration(
-                    color: Colors.black,
-                    backgroundBlendMode: BlendMode.dstOut,
-                  ),
+                // Atas
+                Positioned(
+                  top: 0, left: 0, right: 0, height: verticalGap,
+                  child: Container(color: Colors.black.withOpacity(0.5)),
                 ),
-                Center(
-                  child: Container(
-                    width: 260,
-                    height: 260,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(40),
-                    ),
-                  ),
+                // Bawah
+                Positioned(
+                  bottom: 0, left: 0, right: 0, height: verticalGap,
+                  child: Container(color: Colors.black.withOpacity(0.5)),
+                ),
+                // Kiri
+                Positioned(
+                  top: verticalGap, left: 0, width: horizontalGap, height: scanAreaSize,
+                  child: Container(color: Colors.black.withOpacity(0.5)),
+                ),
+                // Kanan
+                Positioned(
+                  top: verticalGap, right: 0, width: horizontalGap, height: scanAreaSize,
+                  child: Container(color: Colors.black.withOpacity(0.5)),
                 ),
               ],
-            ),
-          ),
+            );
+          },
         ),
 
-        // BORDER PUTIH DI POJOK
+        // 3. BORDER HIASAN (Pojok Putih)
         Center(
-          child: CustomPaint(
-            size: const Size(260, 260),
-            painter: ScannerOverlayPainter(),
+          child: Container(
+            width: scanAreaSize,
+            height: scanAreaSize,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(40),
+            ),
+            child: CustomPaint(
+              painter: ScannerOverlayPainter(),
+            ),
           ),
         ),
       ],
@@ -102,17 +176,13 @@ class _HomeScreenState extends State<HomeScreen> {
       extendBodyBehindAppBar: true,
       body: Stack(
         children: [
-          // TAMPILKAN BODY
           _buildBody(),
 
-          // UI LAYER ATAS (Header Profile & Flash) - Hanya di mode Scan
+          // HEADER UI
           if (_selectedIndex == 0)
             SafeArea(
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 10,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                 child: Row(
                   children: [
                     const CircleAvatar(
@@ -125,29 +195,13 @@ class _HomeScreenState extends State<HomeScreen> {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'Hello,',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 14,
-                            ),
-                          ),
-                          Text(
-                            'Kamu',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
+                          Text('Hello,', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                          Text('M. Galih', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
                         ],
                       ),
                     ),
                     Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        shape: BoxShape.circle,
-                      ),
+                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
                       child: IconButton(
                         icon: const Icon(Icons.flash_on, color: Colors.white),
                         onPressed: () => _controller.toggleTorch(),
@@ -157,24 +211,16 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
-
-          // NAVBAR MELAYANG
+            
+          // NAVBAR BAWAH
           Positioned(
-            left: 24,
-            right: 24,
-            bottom: 40,
+            left: 24, right: 24, bottom: 40,
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
               decoration: BoxDecoration(
                 color: const Color(0xFFF2F2F2).withOpacity(0.95),
                 borderRadius: BorderRadius.circular(40),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
-                    blurRadius: 20,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 10))],
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -196,11 +242,10 @@ class _HomeScreenState extends State<HomeScreen> {
     return GestureDetector(
       onTap: () {
         setState(() => _selectedIndex = index);
-        // Mengatur kamera agar berhenti saat tidak digunakan
         if (index != 0) {
-          _controller.stop();
+           _controller.stop();
         } else {
-          _controller.start();
+           _startCameraSilent();
         }
       },
       child: Container(
@@ -208,32 +253,21 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              color: isSelected ? Colors.blueAccent : Colors.grey[600],
-              size: 28,
-            ),
+            Icon(icon, color: isSelected ? Colors.blueAccent : Colors.grey[600], size: 28),
             const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                color: isSelected ? Colors.blueAccent : Colors.grey[600],
-                fontSize: 12,
-              ),
-            ),
+            Text(label, style: TextStyle(color: isSelected ? Colors.blueAccent : Colors.grey[600], fontSize: 12)),
           ],
         ),
       ),
     );
   }
 
-  // --- LOGIKA HANDLE BARCODE DIPINDAH KE DALAM SINI (AGAR BISA AKSES CONTEXT) ---
   void _handleBarcode(BarcodeCapture capture) {
     final Uint8List? image = capture.image;
     final barcode = capture.barcodes.firstOrNull;
 
     if (barcode != null && barcode.rawValue != null && image != null) {
-      _controller.stop();
+      if (!kIsWeb) _controller.stop(); 
       setState(() => _barcodeValue = barcode.rawValue);
 
       showDialog(
@@ -246,120 +280,36 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               Image.memory(image, height: 180),
               const SizedBox(height: 16),
-              SelectableText(
-                _barcodeValue!,
-                style: const TextStyle(fontSize: 16),
-                textAlign: TextAlign.center,
-              ),
+              SelectableText(_barcodeValue!, style: const TextStyle(fontSize: 16), textAlign: TextAlign.center),
             ],
           ),
           actions: [
-            TextButton.icon(
-              icon: const Icon(Icons.copy),
-              label: const Text('Copy'),
-              onPressed: () {
-                Clipboard.setData(ClipboardData(text: _barcodeValue!));
-                ScaffoldMessenger.of(ctx).showSnackBar(
-                  const SnackBar(content: Text('Disalin ke clipboard')),
-                );
-              },
-            ),
-            TextButton.icon(
-              icon: const Icon(Icons.close),
-              label: const Text('Tutup'),
+            TextButton(
               onPressed: () {
                 Navigator.pop(ctx);
-                _controller.start();
+                if (!kIsWeb) _controller.start();
               },
+              child: const Text('Tutup'),
             ),
           ],
         ),
       );
     }
   }
-} // <--- KURUNG KURAWAL INI PENTING (MENUTUP CLASS _HomeScreenState)
-
-// --- CLASS DI BAWAH INI TETAP DI LUAR CLASS UTAMA (BOLEH) ---
+}
 
 class ScannerOverlayPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 5.0;
-
+    final paint = Paint()..color = Colors.white..style = PaintingStyle.stroke..strokeWidth = 5.0;
     const cornerLength = 30.0;
     final path = Path();
-
-    // Kiri atas
-    path.moveTo(0, cornerLength);
-    path.lineTo(0, 0);
-    path.lineTo(cornerLength, 0);
-
-    // Kanan atas
-    path.moveTo(size.width - cornerLength, 0);
-    path.lineTo(size.width, 0);
-    path.lineTo(size.width, cornerLength);
-
-    // Kiri bawah
-    path.moveTo(0, size.height - cornerLength);
-    path.lineTo(0, size.height);
-    path.lineTo(cornerLength, size.height);
-
-    // Kanan bawah
-    path.moveTo(size.width - cornerLength, size.height);
-    path.lineTo(size.width, size.height);
-    path.lineTo(size.width, size.height - cornerLength);
-
+    path.moveTo(0, cornerLength); path.lineTo(0, 0); path.lineTo(cornerLength, 0);
+    path.moveTo(size.width - cornerLength, 0); path.lineTo(size.width, 0); path.lineTo(size.width, cornerLength);
+    path.moveTo(0, size.height - cornerLength); path.lineTo(0, size.height); path.lineTo(cornerLength, size.height);
+    path.moveTo(size.width - cornerLength, size.height); path.lineTo(size.width, size.height); path.lineTo(size.width, size.height - cornerLength);
     canvas.drawPath(path, paint);
   }
-
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class ScanGuideBottomSheet extends StatelessWidget {
-  const ScanGuideBottomSheet({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: const [
-          BoxShadow(
-            color: Colors.black26,
-            blurRadius: 20,
-            offset: Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text(
-            'Scan QR Code',
-            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            'Arahkan kamera ke QR Code di dalam kotak agar hasil lebih akurat.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 16, color: Colors.grey),
-          ),
-          const SizedBox(height: 24),
-          Image.asset('assets/images/scan-icon.png', width: 200, height: 200),
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Mulai Scan'),
-          ),
-        ],
-      ),
-    );
-  }
 }
